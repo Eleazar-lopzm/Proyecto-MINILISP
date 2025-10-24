@@ -9,6 +9,7 @@ $white = [\x20\x09\x0A\x0D\x0C\x0B]
 $letter = [A-Za-z]
 $digit = [0-9]
 $positive = [1-9]
+$id_rest = [$letter$digit\-\_]
 
 tokens :-
     -- espacios en blanco y comentarios
@@ -63,7 +64,7 @@ tokens :-
     $positive$digit*      { \s -> TokenInt (read s) }
 
     -- identificadores de variables
-    $letter+              { \s -> TokenVar s }
+    $letter$id_rest* { \s -> TokenVar s }
 
     -- por si lo ingresado no fue ninguno de los anteriores
     .                     { \s -> error ("Error lexico: caracter invalido = "
