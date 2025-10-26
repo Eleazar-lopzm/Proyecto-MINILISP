@@ -1,12 +1,11 @@
 -- #################################################
--- ## Archivo: Parser.y (Corregido v2)            ##
+-- ## Archivo: Parser.y                           ##
 -- #################################################
 {
 -- Cabecera de Haskell
 module Parser (parser, ExprS(..)) where -- Exportamos ExprS desde aquí
 
 import Lexer (Token(..))
--- ¡NO importamos AbsSyn.hs!
 }
 
 -- Directivas de Happy
@@ -64,7 +63,6 @@ ExprS :
     | '(' 'let' '(' Bindings ')' ExprS ')'      { LetS $4 $6 }
     | '(' 'let*' '(' Bindings ')' ExprS ')'     { LetStarS $4 $6 }
     | '(' 'letrec' '(' Bindings ')' ExprS ')'   { LetRecS $4 $6 }
-    -- Corrección para 'cond' v2
     | '(' 'cond' CondClauses ')'    {
         -- $3 :: [Either (ExprS, ExprS) ExprS]
         let (clauses, mElse) = foldr
@@ -75,7 +73,6 @@ ExprS :
               $3
         in CondS clauses mElse
     }
-    -- Fin corrección
     | '(' 'if' ExprS ExprS ExprS ')'            { IfS $3 $4 $5 }
     | '(' 'if0' ExprS ExprS ExprS ')'           { If0S $3 $4 $5 }
     | '(' 'lambda' '(' Vars ')' ExprS ')'       { FunS $4 $6 }
