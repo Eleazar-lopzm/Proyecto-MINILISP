@@ -1,5 +1,5 @@
 -- #################################################
--- ## Archivo: Parser.y (Versión de Prueba Aislada)
+-- ## Archivo: Parser.y (Corregido v2)            ##
 -- #################################################
 {
 -- Cabecera de Haskell
@@ -10,7 +10,7 @@ import Lexer (Token(..))
 }
 
 -- Directivas de Happy
-%name parser ExprS
+%name parser  ExprS 
 %tokentype { Token }
 %error { parseError }
 
@@ -24,24 +24,24 @@ import Lexer (Token(..))
     int         { TokenInt $$ }
     bool        { TokenBool $$ }
     var         { TokenVar $$ }
-    'let'       { TokenReserv "let" }
-    'let*'      { TokenReserv "let*" }
-    'letrec'    { TokenReserv "letrec" }
-    'if'        { TokenReserv "if" }
-    'if0'       { TokenReserv "if0" }
-    'lambda'    { TokenReserv "lambda" }
-    'cond'      { TokenReserv "cond" }
-    'else'      { TokenReserv "else" }
-    'head'      { TokenReserv "head" }
-    'tail'      { TokenReserv "tail" }
-    'pair'      { TokenReserv "pair" }
-    'fst'       { TokenReserv "fst" }
-    'snd'       { TokenReserv "snd" }
-    'add1'      { TokenReserv "add1" }
-    'sub1'      { TokenReserv "sub1" }
-    'sqrt'      { TokenReserv "sqrt" }
-    'expt'      { TokenReserv "expt" }
-    'not'       { TokenReserv "not" }
+    'let'       { TokenLet }
+    'let*'      { TokenLetStar }
+    'letrec'    { TokenLetRec }
+    'if'        { TokenIf }
+    'if0'       { TokenIf0 }
+    'lambda'    { TokenLambda }
+    'cond'      { TokenCond }
+    'else'      { TokenElse }
+    'head'      { TokenHead }
+    'tail'      { TokenTail }
+    'pair'      { TokenPair }
+    'fst'       { TokenFst }
+    'snd'       { TokenSnd }
+    'add1'      { TokenAdd1 }
+    'sub1'      { TokenSub1 }
+    'sqrt'      { TokenSqrt }
+    'expt'      { TokenExpt }
+    'not'       { TokenNot }
     '+'         { TokenOp "+" }
     '-'         { TokenOp "-" }
     '*'         { TokenOp "*" }
@@ -53,6 +53,7 @@ import Lexer (Token(..))
     '>='        { TokenOp ">=" }
     '!='        { TokenOp "!=" }
 
+
 %%
 -- Reglas de Gramática
 ExprS :
@@ -63,7 +64,18 @@ ExprS :
     | '(' 'let' '(' Bindings ')' ExprS ')'      { LetS $4 $6 }
     | '(' 'let*' '(' Bindings ')' ExprS ')'     { LetStarS $4 $6 }
     | '(' 'letrec' '(' Bindings ')' ExprS ')'   { LetRecS $4 $6 }
-    | '(' 'cond' Clauses OptElse ')'            { CondS $3 $4 } -- Produce [(ExprS, ExprS)]
+    -- Corrección para 'cond' v2
+    | '(' 'cond' CondClauses ')'    {
+        -- $3 :: [Either (ExprS, ExprS) ExprS]
+        let (clauses, mElse) = foldr
+              (\e (cs, me) -> case e of
+                                Left pair -> (pair:cs, me)
+                                Right v   -> (cs, Just v))
+              ([], Nothing)
+              $3
+        in CondS clauses mElse
+    }
+    -- Fin corrección
     | '(' 'if' ExprS ExprS ExprS ')'            { IfS $3 $4 $5 }
     | '(' 'if0' ExprS ExprS ExprS ')'           { If0S $3 $4 $5 }
     | '(' 'lambda' '(' Vars ')' ExprS ')'       { FunS $4 $6 }
@@ -88,31 +100,40 @@ ExprS :
     | '(' '<=' ExprS ExprSMore ')'              { LteS ($3 : $4) }
     | '(' '>=' ExprS ExprSMore ')'              { GteS ($3 : $4) }
     | '(' ExprS ExprSMore ')'                   { AppS $2 $3 }
+
 Bindings :
       Binding                   { [$1] }
     | Binding Bindings          { $1 : $2 }
+
 Binding :
     '(' var ExprS ')'           { ($2, $3) }
-Clauses :
-      { [] }
-    | Clause Clauses            { $1 : $2 }
-Clause :
-    '[' ExprS ExprS ']'         { ($2, $3) } -- Produce (ExprS, ExprS)
-OptElse :
-      { Nothing }
-    | '[' 'else' ExprS ']'      { Just $3 }
+
+-- Reglas desambiguadas para 'cond'
+CondClauses :
+      CondClause                  { [$1] }
+    | CondClause CondClauses       { $1 : $2 }
+
+CondClause :
+      '[' ExprS ExprS ']'        { Left ($2, $3) }
+    | '[' 'else' ExprS ']'       { Right $3 }
+
+
 Vars :
       { [] }
     | var Vars                  { $1 : $2 }
+
 Exprs :
       { [] }
     | ExprS ExprsRest           { $1 : $2 }
+
 ExprsRest :
       { [] }
     | ',' ExprS ExprsRest       { $2 : $3 }
+
 ExprSMore :
       ExprS                     { [$1] }
     | ExprS ExprSMore           { $1 : $2 }
+
 {
 -- #################################################
 -- ##             PIE DE PÁGINA (Haskell)         ##
@@ -152,7 +173,7 @@ data ExprS
   | LetRecS [(String, ExprS)] ExprS
   | If0S ExprS ExprS ExprS
   | IfS ExprS ExprS ExprS
-  | CondS [(ExprS, ExprS)] (Maybe ExprS) -- <<<<<------ ¡AQUÍ ESTÁ LA CORRECCIÓN!
+  | CondS [(ExprS, ExprS)] (Maybe ExprS) -- Lista de cláusulas (guard, expr), Maybe para else
   | ListS [ExprS]
   | HeadS ExprS
   | TailS ExprS

@@ -35,24 +35,26 @@ tokens :-
     ">"                   { \_ -> TokenOp ">" }
     "="                   { \_ -> TokenOp "=" }
     
-    -- palabras reservadas
-    "not"                 { \_ -> TokenReserv "not" }
-    "letrec"              { \_ -> TokenReserv "letrec" }
-    "let*"                { \_ -> TokenReserv "let*" }
-    "let"                 { \_ -> TokenReserv "let" }
-    "if0"                 { \_ -> TokenReserv "if0" }
-    "if"                  { \_ -> TokenReserv "if" }
-    "lambda"              { \_ -> TokenReserv "lambda" }
-    "add1"                { \_ -> TokenReserv "add1" }
-    "sub1"                { \_ -> TokenReserv "sub1" }
-    "sqrt"                { \_ -> TokenReserv "sqrt" }
-    "expt"                { \_ -> TokenReserv "expt" }
-    "head"                { \_ -> TokenReserv "head" }
-    "tail"                { \_ -> TokenReserv "tail" }
-    "cond"                { \_ -> TokenReserv "cond" }
-    "else"                { \_ -> TokenReserv "else" }
-    "fst"                 { \_ -> TokenReserv "fst" }
-    "snd"                 { \_ -> TokenReserv "snd" }
+    -- palabras reservadas -> tokens específicos
+    "not"                 { \_ -> TokenNot }
+    "letrec"              { \_ -> TokenLetRec }
+    "let*"                { \_ -> TokenLetStar }
+    "let"                 { \_ -> TokenLet }
+    "if0"                 { \_ -> TokenIf0 }
+    "if"                  { \_ -> TokenIf }
+    "lambda"              { \_ -> TokenLambda }
+    "add1"                { \_ -> TokenAdd1 }
+    "sub1"                { \_ -> TokenSub1 }
+    "sqrt"                { \_ -> TokenSqrt }
+    "expt"                { \_ -> TokenExpt }
+    "head"                { \_ -> TokenHead }
+    "tail"                { \_ -> TokenTail }
+    "cond"                { \_ -> TokenCond }
+    "else"                { \_ -> TokenElse }
+    "fst"                 { \_ -> TokenFst }
+    "snd"                 { \_ -> TokenSnd }
+    "pair"                { \_ -> TokenPair }
+
 
     -- literales booleanas
     "#t"                  { \_ -> TokenBool True }
@@ -83,7 +85,24 @@ data Token
     | TokenRCor
     | TokenComa
     | TokenOp String
-    | TokenReserv String
+    | TokenCond
+    | TokenElse
+    | TokenLet
+    | TokenLetStar
+    | TokenLetRec
+    | TokenIf
+    | TokenIf0
+    | TokenLambda
+    | TokenAdd1
+    | TokenSub1
+    | TokenSqrt
+    | TokenExpt
+    | TokenHead
+    | TokenTail
+    | TokenNot
+    | TokenFst
+    | TokenSnd
+    | TokenPair
     deriving (Show, Eq)
 
 -- para ejecutar el lexer
