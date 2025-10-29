@@ -68,10 +68,10 @@ desugar :: ExprS -> ExprC
 desugar (IdS s) = IdC s
 desugar (NumS n) = NumC n
 desugar (BoolS b) = BoolC b
-desugar (AddS es) = foldl1 AddC (map desugar es)
-desugar (SubS es) = foldl1 SubC (map desugar es)
-desugar (MulS es) = foldl1 MulC (map desugar es)
-desugar (DivS es) = foldl1 DivC (map desugar es)
+desugar (AddS es) = desugarVariadicOp AddC es
+desugar (SubS es) = desugarVariadicOp SubC es
+desugar (MulS es) = desugarVariadicOp MulC es
+desugar (DivS es) = desugarVariadicOp DivC es
 desugar (EqS es) = desugarVariadicPredicate EqC (map desugar es)
 desugar (NeqS es) = desugarVariadicPredicate NeqC (map desugar es)
 desugar (LtS es) = desugarVariadicPredicate LtC (map desugar es)
@@ -145,5 +145,7 @@ desugarVariadicPredicate opConstructor (e1 : e2 : rest) = go (opConstructor e1 e
           newAcc = IfC acc currentPred (BoolC False) -- Simula AND
        in go newAcc e es
 
-desugarVariadicOp :: (ExprS -> ExprS -> ExprS) -> [ExprS] -> ExprC
-
+desugarVariadicOp :: (ExprC -> ExprC -> ExprC) -> [ExprS] -> ExprC
+desugarVariadicOp op listExprS =
+  let listExprC = map desugar listExprS
+   in foldl1 op listExprC
