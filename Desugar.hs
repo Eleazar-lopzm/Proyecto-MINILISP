@@ -72,12 +72,12 @@ desugar (AddS es) = desugarVariadicOp AddC es
 desugar (SubS es) = desugarVariadicOp SubC es
 desugar (MulS es) = desugarVariadicOp MulC es
 desugar (DivS es) = desugarVariadicOp DivC es
-desugar (EqS es) = desugarVariadicPredicate EqC (map desugar es)
-desugar (NeqS es) = desugarVariadicPredicate NeqC (map desugar es)
-desugar (LtS es) = desugarVariadicPredicate LtC (map desugar es)
-desugar (GtS es) = desugarVariadicPredicate GtC (map desugar es)
-desugar (LteS es) = desugarVariadicPredicate LteC (map desugar es)
-desugar (GteS es) = desugarVariadicPredicate GteC (map desugar es)
+desugar (EqS es) = desugarChain EqC es
+desugar (NeqS es) = desugarChain NeqC es
+desugar (LtS es) = desugarChain LtC es
+desugar (GtS es) = desugarChain GtC es
+desugar (LteS es) = desugarChain LteC es
+desugar (GteS es) = desugarChain GteC es
 desugar (NotS e) = NotC (desugar e)
 desugar (Add1S e) = Add1C (desugar e)
 desugar (Sub1S e) = Sub1C (desugar e)
@@ -134,17 +134,14 @@ desugar (AppS funExpr argExprs) = applyCurried (desugar funExpr) (map desugar ar
 -- #################################################
 -- ##       FUNCIONES AUXILIARES                  ##
 -- #################################################
-desugarVariadicPredicate :: (ExprC -> ExprC -> ExprC) -> [ExprC] -> ExprC
-desugarVariadicPredicate _ [] = BoolC True -- O error
-desugarVariadicPredicate _ [_] = BoolC True -- O error
-desugarVariadicPredicate opConstructor (e1 : e2 : rest) = go (opConstructor e1 e2) e2 rest
-  where
-    go acc _ [] = acc
-    go acc prev (e : es) =
-      let currentPred = opConstructor prev e
-          newAcc = IfC acc currentPred (BoolC False) -- Simula AND
-       in go newAcc e es
 
+-- Función auxiliar para desazucarizar operadores variádicos de comparaciones <,>,<=,>=,==,=! genera una cadena de comparaciones usando IfC.
+desugarChain :: (ExprC -> ExprC -> ExprC) -> [ExprS] -> ExprC
+desugarChain comp [] = BoolC True
+desugarChain comp [_] = BoolC True
+desugarChain comp (e1: e2 : esRest) = IfC (comp (desugar e1) (desugar e2)) (desugarChain comp (e2 : esRest)) (BoolC False)
+
+-- Función auxiliar para desazucarizar operadores variádicos binarios, mapea cada elemento de la lista, lo desazucariza y luego aplica el operador de izquierda a derecha usando foldl1.
 desugarVariadicOp :: (ExprC -> ExprC -> ExprC) -> [ExprS] -> ExprC
 desugarVariadicOp op listExprS =
   let listExprC = map desugar listExprS
