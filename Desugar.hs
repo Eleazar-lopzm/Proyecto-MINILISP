@@ -109,7 +109,7 @@ desugar (LetStarS bindings body) = desugarLetStar bindings (desugar body)
     desugarLetStar ((var, val) : rest) bodyC = LetC var (desugar val) (desugarLetStar rest bodyC)
 desugar (LetRecS bindings body) = desugarLetRec bindings (desugar body)
   where
-    yCombinator = IdC "Y"
+    yCombinator = fixCombinator
     desugarLetRec [] bodyC = bodyC
     desugarLetRec ((f, FunS params fbody) : rest) bodyC =
       let funExpr = desugar (FunS params fbody)
@@ -146,3 +146,11 @@ desugarVariadicOp :: (ExprC -> ExprC -> ExprC) -> [ExprS] -> ExprC
 desugarVariadicOp op listExprS =
   let listExprC = map desugar listExprS
    in foldl1 op listExprC
+
+-- combinador Z (punto fijo para evaluación por valor), representado en ExprC
+fixCombinator :: ExprC
+fixCombinator =
+  LamC "g" $
+    AppC
+      (LamC "x" (AppC (IdC "g") (LamC "v" (AppC (AppC (IdC "x") (IdC "x")) (IdC "v")))))
+      (LamC "x" (AppC (IdC "g") (LamC "v" (AppC (AppC (IdC "x") (IdC "x")) (IdC "v")))))

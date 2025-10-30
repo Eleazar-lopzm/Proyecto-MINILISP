@@ -30,7 +30,7 @@ lookup :: Id -> Env -> Value
 lookup var [] = error ("Variable libre: " ++ var)
 lookup var ((name, val):rest)
   | var == name = val
-  | otherwise   = lookup var rest -- Búsqueda lineal simple
+  | otherwise   = lookup var rest
 
 valueToExpr :: Value -> ExprC
 valueToExpr (NumV n) = NumC n
@@ -63,7 +63,7 @@ smallStep e@(ValC v) env | isValueVal v = (e, env)
 smallStep (IdC i) env = (ValC (lookup i env), env)
 
 -- Regla para Funciones (sin cambios)
-smallStep (LamC param body) env = (ValC (ClosureV param body env), env)
+smallStep (LamC param body) env = trace ("Creating closure for LamC. CapturedEnv: " ++ show env) $ (ValC (ClosureV param body env), env)
 
 -- Regla para Let (sin cambios)
 smallStep (LetC var valExpr body) env
@@ -120,25 +120,28 @@ smallStep (AppC funExpr argExpr) env
   -- Caso 3: Función es Cierre y Argumento es Valor -> ¡Realiza la aplicación!
   | isClosure funExpr && isValue argExpr =
       case exprToValue funExpr of
-          -- Extrae los componentes del cierre
+-- Dentro de AppC, Case 3
           (ClosureV param body capturedEnv) ->
-              -- El *nuevo estado* es el cuerpo de la función
-              -- El *nuevo entorno* es el entorno CAPTURADO por el cierre,
-              -- extendido con el binding del parámetro al argumento EVALUADO.
-              (body, (param, exprToValue argExpr) : capturedEnv)
+                let argVal = exprToValue argExpr
+                    newEnv = (param, argVal) : capturedEnv
+                in trace ("Applying closure. Param: " ++ param ++ ", ArgVal: " ++ show argVal ++ ", CapturedEnv: " ++ show capturedEnv ++ ", NewEnv: " ++ show newEnv) $
+                  (body, newEnv)
+
           _ -> error "Imposible: isClosure falló" -- No debería pasar
 
   -- Caso 2: Función es Cierre, reduce argumento (Call-by-Value).
   -- El entorno NO cambia en este paso.
   | isClosure funExpr =
-      let (argExpr', _envSame) = smallStep argExpr env -- Reduce argumento en env actual
-      in (AppC funExpr argExpr', env)
+        let (argExpr', argEnv') = smallStep argExpr env -- Captura el entorno devuelto
+        in (AppC funExpr argExpr', argEnv') -- Devuelve el entorno resultante
 
   -- Caso 1: Reduce la expresión de función (debe evaluar a un Cierre).
   -- El entorno NO cambia en este paso.
+
   | otherwise =
-      let (funExpr', _envSame) = smallStep funExpr env -- Reduce función en env actual
-      in (AppC funExpr' argExpr, env)
+      let (funExpr', funEnv') = smallStep funExpr env -- Captura el entorno devuelto
+      in (AppC funExpr' argExpr, funEnv') -- Devuelve el entorno resultante
+
 
 -- Caso de error si ValC contiene algo que no es valor final
 smallStep (ValC v) env | not (isValueVal v) = error ("Error interno: smallStep encontró ValC con no-valor: " ++ show v)
