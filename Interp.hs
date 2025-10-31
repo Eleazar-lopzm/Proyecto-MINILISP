@@ -69,10 +69,27 @@ smallStep (IdC i) env = (ValC (lookup i env), env)
 -- Regla para Funciones (sin cambios)
 smallStep (LamC param body) env = trace ("Creating closure for LamC. CapturedEnv: " ++ show env) $ (ValC (ClosureV param body env), env)
 
--- Regla para Let (sin cambios)
 smallStep (LetC var valExpr body) env
-  | isValue valExpr = (AppC (LamC var body) valExpr, env)
-  | otherwise       = let (valExpr', env') = smallStep valExpr env in (LetC var valExpr' body, env')
+  | isValue valExpr =
+      case exprToValue valExpr of
+        -- Si es closure: construir closure autoreferente (uso sólo de ClosureV y env existentes)
+        clo@(ClosureV param clBody clCapturedEnv) ->
+          let recClosure = ClosureV param clBody ((var, recClosure) : clCapturedEnv)
+              newEnv = (var, recClosure) : env
+          in -- TRACE SEGURO: evita mostrar la estructura recursiva completa
+             trace ("LetC: bound recursive closure for " ++ var ++ ", capturedEnv-size=" ++ show (length clCapturedEnv)) $
+             (body, newEnv)
+
+        -- Si no es closure (número, par, etc.): ligar normalmente
+        val ->
+          let newEnv = (var, val) : env
+          in (body, newEnv)
+
+  | otherwise =
+      -- Si RHS no es valor: reducir RHS en el env actual (no pre-extender)
+      let (valExpr', env') = smallStep valExpr env
+      in (LetC var valExpr' body, env')
+
 
 -- Regla para If (sin cambios)
 smallStep (IfC cond thenE elseE) env
