@@ -80,7 +80,7 @@ smallStep (IfC cond thenE elseE) env
                      (BoolV True)  -> (thenE, env)
                      (BoolV False) -> (elseE, env)
                      _ -> error "Condición de If no es booleana tras evaluar"
-  | otherwise    = let (cond', _) = smallStep cond env in (IfC cond' thenE elseE, env)
+  | otherwise    = let (cond', env') = smallStep cond env in (IfC cond' thenE elseE, env') -- NO DESCARTAR env'
 
 -- Reglas para Operadores Binarios y Unarios (sin cambios, usar auxiliares)
 smallStep (AddC e1 e2) env = smallStepBinOp e1 e2 AddC (\n1 n2 -> NumC (n1 + n2)) env
@@ -96,69 +96,73 @@ smallStep (LteC e1 e2) env = smallStepBinPred e1 e2 LteC (\v1 v2 -> case (v1, v2
 smallStep (GteC e1 e2) env = smallStepBinPred e1 e2 GteC (\v1 v2 -> case (v1, v2) of (NumV n1, NumV n2) -> BoolC (n1 >= n2); _ -> error ">= requiere números") env
 smallStep (NotC e) env
   | isValue e = case exprToValue e of (BoolV b) -> (BoolC (not b), env); _ -> error "Not requiere booleano"
-  | otherwise = let (e', _) = smallStep e env in (NotC e', env)
+  | otherwise = let (e', env') = smallStep e env in (NotC e', env') -- NO DESCARTAR env'
+
 smallStep (Add1C e) env
   | isValue e = case exprToValue e of (NumV n) -> (NumC (n + 1), env); _ -> error "Add1 requiere número"
-  | otherwise = let (e', _) = smallStep e env in (Add1C e', env)
+  | otherwise = let (e', env') = smallStep e env in (Add1C e', env') -- NO DESCARTAR env'
+
 smallStep (Sub1C e) env
   | isValue e = case exprToValue e of (NumV n) -> (NumC (n - 1), env); _ -> error "Sub1 requiere número"
-  | otherwise = let (e', _) = smallStep e env in (Sub1C e', env)
+  | otherwise = let (e', env') = smallStep e env in (Sub1C e', env') -- NO DESCARTAR env'
+
 smallStep (SqrtC e) env
   | isValue e = case exprToValue e of (NumV n) -> (NumC (floor (sqrt (fromIntegral n :: Double))), env); _ -> error "Sqrt requiere número"
-  | otherwise = let (e', _) = smallStep e env in (SqrtC e', env)
+  | otherwise = let (e', env') = smallStep e env in (SqrtC e', env') -- NO DESCARTAR env'
 
 -- Reglas para Pares y Listas (sin cambios)
 smallStep (PairC e1 e2) env
   | isValue e1 && isValue e2 = (ValC (PairV (exprToValue e1) (exprToValue e2)), env)
-  | isValue e1               = let (e2', _) = smallStep e2 env in (PairC e1 e2', env)
-  | otherwise                = let (e1', _) = smallStep e1 env in (PairC e1' e2, env)
+  | isValue e1               = let (e2', env2) = smallStep e2 env in (PairC e1 e2', env2) -- NO DESCARTAR env2
+  | otherwise                = let (e1', env1) = smallStep e1 env in (PairC e1' e2, env1) -- NO DESCARTAR env1
+
 smallStep (FstC e) env
   | isValue e = case exprToValue e of (PairV v1 _) -> (valueToExpr v1, env); _ -> error "Fst requiere un par"
-  | otherwise = let (e', _) = smallStep e env in (FstC e', env)
+  | otherwise = let (e', env') = smallStep e env in (FstC e', env') -- NO DESCARTAR env'
+
 smallStep (SndC e) env
   | isValue e = case exprToValue e of (PairV _ v2) -> (valueToExpr v2, env); _ -> error "Snd requiere un par"
-  | otherwise = let (e', _) = smallStep e env in (SndC e', env)
+  | otherwise = let (e', env') = smallStep e env in (SndC e', env') -- NO DESCARTAR env'
 
 -- Regla para Aplicación (CORREGIDA/REVISADA)
 -- Reemplaza la cláusula smallStep (AppC ...) por esta versión
 smallStep (AppC funExpr argExpr) env
-  -- Nuevo caso: función ya es cierre y argumento es una lambda sintáctica.
-  -- No queremos que la lambda se reduzca antes (porque se crearía una closure
-  -- capturando el entorno SIN la variable recursiva). En su lugar creamos la
-  -- ClosureV del argumento aquí, capturando el `env` actual (que sí contiene
-  -- las ligaduras necesarias, p. ej. "g" tras aplicar el combinador).
+  -- CASO 1: (isLam) La regla especial para 'letrec' (Combinador Z)
+  -- La función es un cierre, y el argumento es una LamC sintáctica.
   | isClosure funExpr && isLam argExpr =
       case exprToValue funExpr of
         (ClosureV param body capturedEnv) ->
           let (LamC argParam argBody) = argExpr
-              argVal = ClosureV argParam argBody env     -- <-- capture `env` aquí
+              -- CORRECTO: Captura el entorno actual 'env'
+              argVal = ClosureV argParam argBody env 
               newEnv = (param, argVal) : capturedEnv
-          in trace ("Applying closure (arg was LamC). Param: " ++ param ++ ", ArgVal: " ++ show argVal ++ ", CapturedEnv: " ++ show capturedEnv ++ ", NewEnv: " ++ show newEnv) $
+          in trace ("Applying closure (arg was LamC)...") $
              (body, newEnv)
         _ -> error "Imposible: isClosure falló (caso isLam argExpr)"
 
-  -- Caso 3 original: función es cierre y argumento ya es un valor (ValC).
+  -- CASO 2: (isValue) La función es un cierre y el argumento es un valor.
+  -- Esta es la regla final de aplicación (β-reducción).
   | isClosure funExpr && isValue argExpr =
       case exprToValue funExpr of
           (ClosureV param body capturedEnv) ->
                 let argVal = exprToValue argExpr
-                    newEnv = (param, argVal) : capturedEnv
-                in trace ("Applying closure. Param: " ++ param ++ ", ArgVal: " ++ show argVal ++ ", CapturedEnv: " ++ show capturedEnv ++ ", NewEnv: " ++ show newEnv) $
-                  (body, newEnv)
-          _ -> error "Imposible: isClosure falló" -- No debería pasar
+                    -- CORRECTO: El nuevo entorno se basa en el 'capturedEnv' (Alcance Estático)
+                    newEnv = (param, argVal) : capturedEnv 
+                in trace ("Applying closure...") $
+                   (body, newEnv)
+          _ -> error "Imposible: isClosure falló"
 
-  -- Caso 2: Función es cierre, reduce argumento (Call-by-Value).
-  -- El entorno NO cambia en este paso.
+  -- CASO 3: (Reduce Arg) La función es un cierre, el argumento no es un valor.
+  -- Se reduce el argumento (Call-by-Value).
   | isClosure funExpr =
-        let (argExpr', argEnv') = smallStep argExpr env -- Captura el entorno devuelto
-        in (AppC funExpr argExpr', argEnv') -- Devuelve el entorno resultante
+        let (argExpr', argEnv') = smallStep argExpr env -- CORRECTO: Captura argEnv'
+        in (AppC funExpr argExpr', argEnv')             -- CORRECTO: Retorna argEnv'
 
-  -- Caso 1: Reduce la expresión de función (debe evaluar a un Cierre).
-  -- El entorno NO cambia en este paso.
+  -- CASO 4: (Reduce Fun) La función no es un cierre.
+  -- Se reduce la función.
   | otherwise =
-      let (funExpr', funEnv') = smallStep funExpr env -- Captura el entorno devuelto
-      in (AppC funExpr' argExpr, funEnv') -- Devuelve el entorno resultante
-
+      let (funExpr', funEnv') = smallStep funExpr env -- CORRECTO: Captura funEnv'
+      in (AppC funExpr' argExpr, funEnv')
 
 -- Caso de error si ValC contiene algo que no es valor final
 smallStep (ValC v) env | not (isValueVal v) = error ("Error interno: smallStep encontró ValC con no-valor: " ++ show v)
@@ -175,22 +179,21 @@ smallStepBinOp e1 e2 builder evalFunc env
         (NumV n1, NumV n2) -> (evalFunc n1 n2, env)
         _ -> error ("Error de tipo en operador binario: " ++ show e1 ++ ", " ++ show e2)
   | isValue e1 =
-      let (e2', env2) = smallStep e2 env
-      in (builder e1 e2', env2)
+      let (e2', env2) = smallStep e2 env -- CORRECTO: Captura env2
+      in (builder e1 e2', env2)          -- CORRECTO: Retorna env2
   | otherwise =
-      let (e1', env1) = smallStep e1 env
-      in (builder e1' e2, env1)
-
+      let (e1', env1) = smallStep e1 env -- CORRECTO: Captura env1
+      in (builder e1' e2, env1)          -- CORRECTO: Retorna env1
 
 smallStepBinPred :: ExprC -> ExprC -> (ExprC -> ExprC -> ExprC) -> (Value -> Value -> ExprC) -> Env -> (ExprC, Env)
 smallStepBinPred e1 e2 builder evalFunc env
   | isValue e1 && isValue e2 = (evalFunc (exprToValue e1) (exprToValue e2), env)
   | isValue e1 =
-      let (e2', env2) = smallStep e2 env
-      in (builder e1 e2', env2)
+      let (e2', env2) = smallStep e2 env -- CORRECTO: Captura env2
+      in (builder e1 e2', env2)          -- CORRECTO: Retorna env2
   | otherwise =
-      let (e1', env1) = smallStep e1 env
-      in (builder e1' e2, env1)
+      let (e1', env1) = smallStep e1 env -- CORRECTO: Captura env1
+      in (builder e1' e2, env1)          -- CORRECTO: Retorna env1
 
 
 
