@@ -32,6 +32,10 @@ lookup var ((name, val):rest)
   | var == name = val
   | otherwise   = lookup var rest
 
+isLam :: ExprC -> Bool
+isLam (LamC _ _) = True
+isLam _          = False
+
 valueToExpr :: Value -> ExprC
 valueToExpr (NumV n) = NumC n
 valueToExpr (BoolV b) = BoolC b
@@ -68,7 +72,7 @@ smallStep (LamC param body) env = trace ("Creating closure for LamC. CapturedEnv
 -- Regla para Let (sin cambios)
 smallStep (LetC var valExpr body) env
   | isValue valExpr = (AppC (LamC var body) valExpr, env)
-  | otherwise       = let (valExpr', _) = smallStep valExpr env in (LetC var valExpr' body, env)
+  | otherwise       = let (valExpr', env') = smallStep valExpr env in (LetC var valExpr' body, env')
 
 -- Regla para If (sin cambios)
 smallStep (IfC cond thenE elseE) env
@@ -116,20 +120,34 @@ smallStep (SndC e) env
   | otherwise = let (e', _) = smallStep e env in (SndC e', env)
 
 -- Regla para Aplicación (CORREGIDA/REVISADA)
+-- Reemplaza la cláusula smallStep (AppC ...) por esta versión
 smallStep (AppC funExpr argExpr) env
-  -- Caso 3: Función es Cierre y Argumento es Valor -> ¡Realiza la aplicación!
+  -- Nuevo caso: función ya es cierre y argumento es una lambda sintáctica.
+  -- No queremos que la lambda se reduzca antes (porque se crearía una closure
+  -- capturando el entorno SIN la variable recursiva). En su lugar creamos la
+  -- ClosureV del argumento aquí, capturando el `env` actual (que sí contiene
+  -- las ligaduras necesarias, p. ej. "g" tras aplicar el combinador).
+  | isClosure funExpr && isLam argExpr =
+      case exprToValue funExpr of
+        (ClosureV param body capturedEnv) ->
+          let (LamC argParam argBody) = argExpr
+              argVal = ClosureV argParam argBody env     -- <-- capture `env` aquí
+              newEnv = (param, argVal) : capturedEnv
+          in trace ("Applying closure (arg was LamC). Param: " ++ param ++ ", ArgVal: " ++ show argVal ++ ", CapturedEnv: " ++ show capturedEnv ++ ", NewEnv: " ++ show newEnv) $
+             (body, newEnv)
+        _ -> error "Imposible: isClosure falló (caso isLam argExpr)"
+
+  -- Caso 3 original: función es cierre y argumento ya es un valor (ValC).
   | isClosure funExpr && isValue argExpr =
       case exprToValue funExpr of
--- Dentro de AppC, Case 3
           (ClosureV param body capturedEnv) ->
                 let argVal = exprToValue argExpr
                     newEnv = (param, argVal) : capturedEnv
                 in trace ("Applying closure. Param: " ++ param ++ ", ArgVal: " ++ show argVal ++ ", CapturedEnv: " ++ show capturedEnv ++ ", NewEnv: " ++ show newEnv) $
                   (body, newEnv)
-
           _ -> error "Imposible: isClosure falló" -- No debería pasar
 
-  -- Caso 2: Función es Cierre, reduce argumento (Call-by-Value).
+  -- Caso 2: Función es cierre, reduce argumento (Call-by-Value).
   -- El entorno NO cambia en este paso.
   | isClosure funExpr =
         let (argExpr', argEnv') = smallStep argExpr env -- Captura el entorno devuelto
@@ -137,7 +155,6 @@ smallStep (AppC funExpr argExpr) env
 
   -- Caso 1: Reduce la expresión de función (debe evaluar a un Cierre).
   -- El entorno NO cambia en este paso.
-
   | otherwise =
       let (funExpr', funEnv') = smallStep funExpr env -- Captura el entorno devuelto
       in (AppC funExpr' argExpr, funEnv') -- Devuelve el entorno resultante
@@ -153,17 +170,28 @@ smallStep (ValC v) env | not (isValueVal v) = error ("Error interno: smallStep e
 -- #################################################
 smallStepBinOp :: ExprC -> ExprC -> (ExprC -> ExprC -> ExprC) -> (Int -> Int -> ExprC) -> Env -> (ExprC, Env)
 smallStepBinOp e1 e2 builder evalFunc env
-  | isValue e1 && isValue e2 = case (exprToValue e1, exprToValue e2) of
-                                 (NumV n1, NumV n2) -> (evalFunc n1 n2, env)
-                                 _ -> error ("Error de tipo en operador binario: " ++ show e1 ++ ", " ++ show e2)
-  | isValue e1 = let (e2', _) = smallStep e2 env in (builder e1 e2', env)
-  | otherwise  = let (e1', _) = smallStep e1 env in (builder e1' e2, env)
+  | isValue e1 && isValue e2 =
+      case (exprToValue e1, exprToValue e2) of
+        (NumV n1, NumV n2) -> (evalFunc n1 n2, env)
+        _ -> error ("Error de tipo en operador binario: " ++ show e1 ++ ", " ++ show e2)
+  | isValue e1 =
+      let (e2', env2) = smallStep e2 env
+      in (builder e1 e2', env2)
+  | otherwise =
+      let (e1', env1) = smallStep e1 env
+      in (builder e1' e2, env1)
+
 
 smallStepBinPred :: ExprC -> ExprC -> (ExprC -> ExprC -> ExprC) -> (Value -> Value -> ExprC) -> Env -> (ExprC, Env)
 smallStepBinPred e1 e2 builder evalFunc env
   | isValue e1 && isValue e2 = (evalFunc (exprToValue e1) (exprToValue e2), env)
-  | isValue e1 = let (e2', _) = smallStep e2 env in (builder e1 e2', env)
-  | otherwise  = let (e1', _) = smallStep e1 env in (builder e1' e2, env)
+  | isValue e1 =
+      let (e2', env2) = smallStep e2 env
+      in (builder e1 e2', env2)
+  | otherwise =
+      let (e1', env1) = smallStep e1 env
+      in (builder e1' e2, env1)
+
 
 
 -- #################################################
