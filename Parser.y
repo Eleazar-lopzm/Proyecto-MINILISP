@@ -123,9 +123,11 @@ Exprs :
       { [] }
     | ExprS ExprsRest           { $1 : $2 }
 
+-- Cambia ExprsRest para permitir espacios
 ExprsRest :
       { [] }
-    | ',' ExprS ExprsRest       { $2 : $3 }
+    | ExprS ExprsRest           { $1 : $2 }  -- Permite espacios
+    | ',' ExprS ExprsRest       { $2 : $3 }  -- También permite comas
 
 ExprSMore :
       ExprS                     { [$1] }
