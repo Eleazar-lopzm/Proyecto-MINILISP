@@ -35,6 +35,7 @@ data ExprC
   | LamC Id ExprC -- Funciones (un solo argumento - currificadas)
   | AppC ExprC ExprC -- Aplicación de funciones (un solo argumento)
   | LetC Id ExprC ExprC -- Único constructor de asignación
+  | RestoreC ExprC Env -- Wrapper interno para small-step: evalúa un cuerpo con el env del closure y restaura el env del llamador
   | IfC ExprC ExprC ExprC -- Único condicional
   -- Operadores/Predicados Nucleo (Binarios o Unarios)
   | AddC ExprC ExprC
@@ -109,16 +110,18 @@ desugar (LetStarS bindings body) = desugarLetStar bindings (desugar body)
     desugarLetStar ((var, val) : rest) bodyC = LetC var (desugar val) (desugarLetStar rest bodyC)
 desugar (LetRecS bindings body) = desugarLetRec bindings (desugar body)
   where
-    yCombinator = fixCombinator
+    -- Simplicación: los RHS de `letrec` en nuestro mini-lenguaje se esperan
+    -- como funciones (lambda). En lugar de usar un combinador Y, delegamos
+    -- en la semántica del intérprete: cuando el RHS es una función se
+    -- convertirá en un ClosureV y la regla de `LetC` crea automáticamente
+    -- un closure autoreferente (permitiendo recursión). Esto evita
+    -- expansiones infinitas causadas por una mezcla incorrecta con Y.
     desugarLetRec [] bodyC = bodyC
     desugarLetRec ((f, FunS params fbody) : rest) bodyC =
       let funExpr = desugar (FunS params fbody)
-          yAbstract = LamC f funExpr
-       in LetC f (AppC yCombinator yAbstract) (desugarLetRec rest bodyC)
-    desugarLetRec ((f, val) : rest) bodyC =
-      let valExpr = desugar val
-          yAbstract = LamC f valExpr
-       in LetC f (AppC yCombinator yAbstract) (desugarLetRec rest bodyC)
+       in LetC f funExpr (desugarLetRec rest bodyC)
+    desugarLetRec ((f, val) : _rest) _bodyC =
+      error ("letrec: RHS no es una función para '" ++ f ++ "' — letrec solo admite bindings de funciones en esta implementación")
 desugar (FunS params body) = curryLambda params (desugar body)
   where
     curryLambda [] bodyC = bodyC

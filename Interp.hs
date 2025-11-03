@@ -144,42 +144,36 @@ smallStep (SndC e) env
 -- Regla para Aplicación (CORREGIDA/REVISADA)
 -- Reemplaza la cláusula smallStep (AppC ...) por esta versión
 smallStep (AppC funExpr argExpr) env
-  -- CASO 1: (isLam) La regla especial para 'letrec' (Combinador Z)
-  -- La función es un cierre, y el argumento es una LamC sintáctica.
-  | isClosure funExpr && isLam argExpr =
-      case exprToValue funExpr of
-        (ClosureV param body capturedEnv) ->
-          let (LamC argParam argBody) = argExpr
-              -- CORRECTO: Captura el entorno actual 'env'
-              argVal = ClosureV argParam argBody env 
-              newEnv = (param, argVal) : capturedEnv
-          in trace ("Applying closure (arg was LamC)...") $
-             (body, newEnv)
-        _ -> error "Imposible: isClosure falló (caso isLam argExpr)"
-
-  -- CASO 2: (isValue) La función es un cierre y el argumento es un valor.
-  -- Esta es la regla final de aplicación (β-reducción).
+  -- Regla de aplicación estándar (evaluación por valor):
+  -- 1) Si la función es un cierre y el argumento ya es un valor, aplicar (β-reducción).
+  -- 2) Si la función es un cierre y el argumento no es un valor, reducir el argumento.
+  -- 3) Si la función no es aún un cierre, reducir la función.
   | isClosure funExpr && isValue argExpr =
       case exprToValue funExpr of
-          (ClosureV param body capturedEnv) ->
-                let argVal = exprToValue argExpr
-                    -- CORRECTO: El nuevo entorno se basa en el 'capturedEnv' (Alcance Estático)
-                    newEnv = (param, argVal) : capturedEnv 
-                in trace ("Applying closure...") $
-                   (body, newEnv)
-          _ -> error "Imposible: isClosure falló"
+        (ClosureV param body capturedEnv) ->
+          let argVal = exprToValue argExpr
+              newEnv = (param, argVal) : capturedEnv
+              msg = "Applying closure: param=" ++ show param ++ ", argVal=" ++ show argVal ++ ", capturedEnv-size=" ++ show (length capturedEnv)
+          -- En small-step necesitamos preservar/restaurar el entorno del llamador.
+          -- Creamos una expresión interna `RestoreC body callerEnv` y continuamos la
+          -- reducción usando `newEnv` (entorno del closure). Cuando `body` sea
+          -- un valor, la regla de `RestoreC` restaurará el `callerEnv`.
+          in trace msg $ (RestoreC body env, newEnv)
+        _ -> error "Imposible: isClosure falló"
 
-  -- CASO 3: (Reduce Arg) La función es un cierre, el argumento no es un valor.
-  -- Se reduce el argumento (Call-by-Value).
   | isClosure funExpr =
-        let (argExpr', argEnv') = smallStep argExpr env -- CORRECTO: Captura argEnv'
-        in (AppC funExpr argExpr', argEnv')             -- CORRECTO: Retorna argEnv'
+      let (argExpr', argEnv') = smallStep argExpr env
+      in (AppC funExpr argExpr', argEnv')
 
-  -- CASO 4: (Reduce Fun) La función no es un cierre.
-  -- Se reduce la función.
   | otherwise =
-      let (funExpr', funEnv') = smallStep funExpr env -- CORRECTO: Captura funEnv'
+      let (funExpr', funEnv') = smallStep funExpr env
       in (AppC funExpr' argExpr, funEnv')
+
+-- Regla para RestoreC: evalúa su subexpresión con el env actual; cuando
+-- la subexpresión es valor, restaura el env del llamador guardado.
+smallStep (RestoreC e callerEnv) env
+  | isValue e = (e, callerEnv)
+  | otherwise = let (e', env') = smallStep e env in (RestoreC e' callerEnv, env')
 
 -- Caso de error si ValC contiene algo que no es valor final
 smallStep (ValC v) env | not (isValueVal v) = error ("Error interno: smallStep encontró ValC con no-valor: " ++ show v)
