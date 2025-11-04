@@ -2,8 +2,7 @@
 -- ## Archivo: Parser.y                           ##
 -- #################################################
 {
--- Cabecera de Haskell
-module Parser (parser, ExprS(..)) where -- Exportamos ExprS desde aquí
+module Parser (parser, ExprS(..)) where
 
 import Lexer (Token(..))
 }

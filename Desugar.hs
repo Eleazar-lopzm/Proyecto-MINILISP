@@ -35,7 +35,7 @@ data ExprC
   | LamC Id ExprC -- Funciones (un solo argumento - currificadas)
   | AppC ExprC ExprC -- Aplicación de funciones (un solo argumento)
   | LetC Id ExprC ExprC -- Único constructor de asignación
-  | RestoreC ExprC Env -- Wrapper interno para small-step: evalúa un cuerpo con el env del closure y restaura el env del llamador
+  | RestoreC ExprC Env -- evalúa un cuerpo con el env del closure y restaura el env del llamador
   | IfC ExprC ExprC ExprC -- Único condicional
   -- Operadores/Predicados Nucleo (Binarios o Unarios)
   | AddC ExprC ExprC
@@ -110,12 +110,6 @@ desugar (LetStarS bindings body) = desugarLetStar bindings (desugar body)
     desugarLetStar ((var, val) : rest) bodyC = LetC var (desugar val) (desugarLetStar rest bodyC)
 desugar (LetRecS bindings body) = desugarLetRec bindings (desugar body)
   where
-    -- Simplicación: los RHS de `letrec` en nuestro mini-lenguaje se esperan
-    -- como funciones (lambda). En lugar de usar un combinador Y, delegamos
-    -- en la semántica del intérprete: cuando el RHS es una función se
-    -- convertirá en un ClosureV y la regla de `LetC` crea automáticamente
-    -- un closure autoreferente (permitiendo recursión). Esto evita
-    -- expansiones infinitas causadas por una mezcla incorrecta con Y.
     desugarLetRec [] bodyC = bodyC
     desugarLetRec ((f, FunS params fbody) : rest) bodyC =
       let funExpr = desugar (FunS params fbody)
@@ -130,9 +124,6 @@ desugar (AppS funExpr argExprs) = applyCurried (desugar funExpr) (map desugar ar
   where
     applyCurried funC [] = funC
     applyCurried funC (a : args) = foldl AppC (AppC funC a) args
-
--- No exportamos ValC desde desugar, ya que es interno al intérprete
--- desugar (ValC _) = error "ValC no debería aparecer antes de la interpretación"
 
 -- #################################################
 -- ##       FUNCIONES AUXILIARES                  ##
@@ -150,7 +141,7 @@ desugarVariadicOp op listExprS =
   let listExprC = map desugar listExprS
    in foldl1 op listExprC
 
--- combinador Z (punto fijo para evaluación por valor), representado en ExprC
+-- combinador Z (punto fijo para evaluación por valor)
 fixCombinator :: ExprC
 fixCombinator =
   LamC "g" $
