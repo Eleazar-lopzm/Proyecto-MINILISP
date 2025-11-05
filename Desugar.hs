@@ -1,34 +1,31 @@
 -- #################################################
--- ## Archivo: Desugar.hs (Corregido y Refactorizado) ##
+-- ## Archivo: Desugar.hs ##
 -- #################################################
 module Desugar (desugar, ExprC (..), Value (..), Env, Id) where
 
--- Importamos la definición de ExprS (ASA de Superficie) desde el Parser
+
 import Parser (ExprS (..))
 
--- Definimos un alias para los identificadores (Strings)
+
 type Id = String
 
 -- #################################################
 -- ##          DEFINICIÓN DE VALORES Y ENTORNO    ##
 -- #################################################
--- Define los posibles resultados *finales* de la evaluación (Valores).
 data Value
   = NumV Int
   | BoolV Bool
-  | ClosureV Id ExprC Env -- Parámetro, Cuerpo, Entorno capturado (Alcance Estático)
+  | ClosureV Id ExprC Env 
   | PairV Value Value
   | NilV
   deriving (Eq, Show)
 
--- Entorno de ejecución: mapea Identificadores (Strings) a Valores
+
 type Env = [(Id, Value)]
 
 -- #################################################
 -- ##       DEFINICIÓN DE ExprC (ASA Núcleo)      ##
 -- #################################################
--- Contiene las construcciones mínimas + ValC para el intérprete.
--- ¡OBSERVA QUE LetC HA SIDO ELIMINADO!
 data ExprC
   = IdC Id -- Identificadores
   | NumC Int -- Literales numéricas
@@ -54,12 +51,11 @@ data ExprC
   | SqrtC ExprC -- Raiz
   | ExptC ExprC ExprC -- Exponencial
   -- Primitivas de Pares y Listas
-  | PairC ExprC ExprC -- Constructor de pares (expresiones como hijos)
+  | PairC ExprC ExprC -- Constructor de pares 
   | FstC ExprC -- Proyección primer elemento
   | SndC ExprC -- Proyección segundo elemento
   | NilC -- Representación de lista vacía en el núcleo
-  -- Constructor *interno* para el intérprete smallStep:
-  | ValC Value -- Encapsula un Valor dentro de una Expresión
+  | ValC Value 
   deriving (Show, Eq)
 
 -- #################################################
@@ -75,24 +71,22 @@ curryLambda (p : ps) bodyC = LamC p (curryLambda ps bodyC)
 -- Transforma una aplicación múltiple en aplicaciones anidadas (asociatividad izquierda)
 -- Ej: (f a b c) -> (((f a) b) c)
 applyCurried :: ExprC -> [ExprC] -> ExprC
-applyCurried funC [] = funC -- Aplicación de función sin argumentos (ej. 'f')
+applyCurried funC [] = funC 
 applyCurried funC (a : args) = foldl AppC (AppC funC a) args
 
 -- Función auxiliar para desazucarizar operadores variádicos binarios
--- (Mapea, desazucariza y aplica el operador de izquierda a derecha)
 desugarVariadicOp :: (ExprC -> ExprC -> ExprC) -> [ExprS] -> ExprC
 desugarVariadicOp op listExprS =
   let listExprC = map desugar listExprS
    in foldl1 op listExprC
 
 -- Función auxiliar para desazucarizar operadores variádicos de comparaciones
--- (Genera una cadena de comparaciones anidadas)
 desugarChain :: (ExprC -> ExprC -> ExprC) -> [ExprS] -> ExprC
 desugarChain comp [] = BoolC True
 desugarChain comp [_] = BoolC True
 desugarChain comp (e1: e2 : esRest) = IfC (comp (desugar e1) (desugar e2)) (desugarChain comp (e2 : esRest)) (BoolC False)
 
--- combinador Z (punto fijo para evaluación por valor)
+-- combinador Z 
 fixCombinator :: ExprC
 fixCombinator =
   LamC "g" $
@@ -163,34 +157,26 @@ desugar (LetS bindings body) =
 desugar (LetStarS bindings body) = desugarLetStar (map desugarBinding bindings) (desugar body)
   where
     desugarBinding (var, valS) = (var, desugar valS)
-    -- Caso base: solo queda el cuerpo
     desugarLetStar [] bodyC = bodyC
-    -- Caso recursivo: (let* ((var val) ...rest) body)
-    -- se convierte en: ((lambda (var) (let* (...rest) body)) val)
     desugarLetStar ((var, valC) : rest) bodyC =
       AppC (LamC var (desugarLetStar rest bodyC)) valC
 
 -- REGLA PARA LetRecS (Recursivo)
 -- (letrec ((f (lambda (p) ...))) body) ->
 --   ((lambda (f) body) (Z (lambda (f) (lambda (p) ...))))
--- REGLA PARA LetRecS 
 desugar (LetRecS bindings body) = desugarLetRec bindings (desugar body)
   where
     desugarLetRec [] bodyC = bodyC
     desugarLetRec ((f, FunS params fbody) : rest) bodyC =
-        -- g = (lambda (f) (lambda (params...) fbody))
         let g   = LamC f (desugar (FunS params fbody))
-            -- z_g = (Z g)
             z_g = AppC fixCombinator g
-        -- ((lambda (f) (desugarLetRec rest bodyC)) z_g)
         in AppC (LamC f (desugarLetRec rest bodyC)) z_g
         
     desugarLetRec ((f, val) : _rest) _bodyC =
-      error ("letrec: RHS no es una función para '" ++ f ++ "' — letrec solo admite bindings de funciones en esta implementación")
+      error ("letrec: No es una función para '" ++ f ++ "' — letrec solo admite bindings de funciones en esta implementación")
 
--- REGLA PARA FunS 
+ 
 desugar (FunS params body) = curryLambda params (desugar body)
-
--- REGLA PARA AppS 
+ 
 desugar (AppS funExpr argExprs) = applyCurried (desugar funExpr) (map desugar argExprs)
 

@@ -133,17 +133,12 @@ ExprSMore :
     | ExprS ExprSMore           { $1 : $2 }
 
 {
--- #################################################
--- ##             PIE DE PÁGINA (Haskell)         ##
--- #################################################
 
 -- La función de error
 parseError :: [Token] -> a
 parseError tokens = error ("Error de sintaxis cerca de: " ++ show (take 10 tokens))
 
--- #################################################
--- ##       DEFINICIÓN DE ExprS (¡AQUÍ MISMO!)    ##
--- #################################################
+
 data ExprS
   = IdS String
   | NumS Int
@@ -171,7 +166,7 @@ data ExprS
   | LetRecS [(String, ExprS)] ExprS
   | If0S ExprS ExprS ExprS
   | IfS ExprS ExprS ExprS
-  | CondS [(ExprS, ExprS)] (Maybe ExprS) -- Lista de cláusulas (guard, expr), Maybe para else
+  | CondS [(ExprS, ExprS)] (Maybe ExprS) 
   | ListS [ExprS]
   | HeadS ExprS
   | TailS ExprS

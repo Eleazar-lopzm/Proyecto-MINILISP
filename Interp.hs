@@ -1,5 +1,5 @@
 -- #################################################
--- ## Archivo: Interp.hs (Simplificado sin LetC)  ##
+-- ## Archivo: Interp.hs ##
 -- #################################################
 module Interp (interp, Value(..), Env) where
 
@@ -65,11 +65,6 @@ smallStep (IdC i) env = (ValC (lookup i env), env)
 -- Regla para Funciones 
 smallStep (LamC param body) env = trace ("Creating closure for LamC. CapturedEnv: " ++ show env) $ (ValC (ClosureV param body env), env)
 
--- --- ¡CASO LetC ELIMINADO! ---
--- La lógica para LetS, LetStarS y LetRecS ahora es
--- manejada por AppC y LamC, gracias al desazucarado.
-
--- Regla para If
 smallStep (IfC cond thenE elseE) env
   | isValue cond = case exprToValue cond of
                      (BoolV True)  -> (thenE, env)
@@ -129,7 +124,7 @@ smallStep (AppC funExpr argExpr) env
               newEnv = (param, argVal) : capturedEnv
           in trace "Applying closure..." (RestoreC body env, newEnv)
         _ -> error "Imposible: isClosure falló (caso valor)"
-  -- 2) Función lista y argumento es LamC: crear cierre del arg con env del llamador (evita ambientes recursivos)
+  -- 2) Función lista y argumento es LamC
   | isClosure funExpr && isLam argExpr =
       case exprToValue funExpr of
         (ClosureV param body capturedEnv) ->
@@ -138,7 +133,7 @@ smallStep (AppC funExpr argExpr) env
               newEnv = (param, argVal) : capturedEnv
           in trace "Applying closure (arg was LamC)..." (RestoreC body env, newEnv)
         _ -> error "Imposible: isClosure falló (caso isLam argExpr)"
-  -- 3) La función ya es un cierre, reducir el argumento
+  -- 3) La función ya es un clousure, reducir el argumento
   | isClosure funExpr =
       let (argExpr', env') = smallStep argExpr env
       in (AppC funExpr argExpr', env')
@@ -147,15 +142,13 @@ smallStep (AppC funExpr argExpr) env
       let (funExpr', env') = smallStep funExpr env
       in (AppC funExpr' argExpr, env')
 
--- Regla para RestoreC: evalúa su subexpresión con el env actual; cuando
--- la subexpresión es valor, restaura el env del llamador guardado.
 smallStep (RestoreC e callerEnv) env
   | isValue e = (e, callerEnv)
   | otherwise = let (e', env') = smallStep e env in (RestoreC e' callerEnv, env')
 
 -- Caso de error si ValC contiene algo que no es valor final
 smallStep (ValC v) env | not (isValueVal v) = error ("Error interno: smallStep encontró ValC con no-valor: " ++ show v)
-                       | otherwise = (ValC v, env) -- Si es valor, no hace nada
+                       | otherwise = (ValC v, env) 
 
 
 -- #################################################
@@ -187,13 +180,12 @@ smallStepBinPred e1 e2 builder evalFunc env
 
 
 -- #################################################
--- ##       FUNCIÓN INTERP (Itera smallStep)      ##
+-- ##       FUNCIÓN INTERP    ##
 -- #################################################
 interp :: ExprC -> Env -> Value
 interp e env = go e env
   where
     go currentExpr currentEnv
-      -- Condición de parada: La expresión es un valor Y el *valor* interno es final
       | isValue currentExpr && isValueVal (exprToValue currentExpr) =
           exprToValue currentExpr
       | otherwise =
