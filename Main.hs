@@ -125,12 +125,12 @@ fibTests =
 
 mapTests :: [String]
 mapTests =
-  [ "(letrec((map(lambda(f L) (if(=L nil) nil (pair(f(fst L))(map f (snd L))))))) (map (lambda(x)(+ x 1)) (L 1 2 3 4 5)))"
+  [ "(letrec((map(lambda(f L) (if(=L nil) nil (pair(f(fst L))(map f (snd L))))))) (map (lambda(x)(+ x 1)) [1 2 3 4 5]))"
   ]
 
 filterTests :: [String]
 filterTests =
-  [ "(letrec((filter(lambda(pred L) (if(=L nil) nil (if(pred(fst L)) (pair(fst L)(filter pred (snd L))) (filter pred (snd L))))))) (filter (lambda(x)(> x 3)) (L 1 2 3 4 5 6)))"
+  [ "(letrec((filter(lambda(pred L) (if(=L nil) nil (if(pred(fst L)) (pair(fst L)(filter pred (snd L))) (filter pred (snd L))))))) (filter (lambda(x)(> x 3)) [1 2 3 4 5 6]))"
   ]
 
 runAll :: IO ()
