@@ -1,5 +1,5 @@
 -- #################################################
--- ## Archivo: Interp.hs (Corregido para letrec/HOF) ##
+-- ## Archivo: Interp.hs (Simplificado sin LetC)  ##
 -- #################################################
 module Interp (interp, Value(..), Env) where
 
@@ -65,26 +65,9 @@ smallStep (IdC i) env = (ValC (lookup i env), env)
 -- Regla para Funciones 
 smallStep (LamC param body) env = trace ("Creating closure for LamC. CapturedEnv: " ++ show env) $ (ValC (ClosureV param body env), env)
 
-smallStep (LetC var valExpr body) env
-  | isValue valExpr =
-      case exprToValue valExpr of
-        -- Si es closure: construir closure autoreferente (uso sólo de ClosureV y env existentes)
-        clo@(ClosureV param clBody clCapturedEnv) ->
-          let recClosure = ClosureV param clBody ((var, recClosure) : clCapturedEnv)
-              newEnv = (var, recClosure) : env
-          in trace ("LetC: bound recursive closure for " ++ var ++ ", capturedEnv-size=" ++ show (length clCapturedEnv)) $
-             (body, newEnv)
-
-        -- Si no es closure (número, par, etc.): ligar normalmente
-        val ->
-          let newEnv = (var, val) : env
-          in (body, newEnv)
-
-  | otherwise =
-      -- Si RHS no es valor: reducir RHS en el env actual (no pre-extender)
-      let (valExpr', env') = smallStep valExpr env
-      in (LetC var valExpr' body, env')
-
+-- --- ¡CASO LetC ELIMINADO! ---
+-- La lógica para LetS, LetStarS y LetRecS ahora es
+-- manejada por AppC y LamC, gracias al desazucarado.
 
 -- Regla para If
 smallStep (IfC cond thenE elseE) env
@@ -146,8 +129,12 @@ smallStep (AppC funExpr argExpr) env
       case exprToValue funExpr of
         (ClosureV param body capturedEnv) ->
           let argVal = exprToValue argExpr
-              newEnv = (param, argVal) : capturedEnv
+              -- ¡Aquí está la magia del alcance estático!
+              -- El nuevo entorno se construye extendiendo el ENTORNO CAPTURADO (capturedEnv),
+              -- no el entorno actual (env).
+              newEnv = (param, argVal) : capturedEnv 
               msg = "Applying closure: param=" ++ show param ++ ", argVal=" ++ show argVal ++ ", capturedEnv-size=" ++ show (length capturedEnv)
+          -- Usamos RestoreC para volver al entorno del llamador (env) después de que el cuerpo termine
           in trace msg $ (RestoreC body env, newEnv)
         _ -> error "Imposible: isClosure falló"
 
