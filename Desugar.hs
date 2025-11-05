@@ -105,6 +105,7 @@ fixCombinator =
 -- ##       FUNCIÓN PRINCIPAL DE DESAZUCARIZACIÓN ##
 -- #################################################
 desugar :: ExprS -> ExprC
+desugar (IdS "nil") = NilC
 desugar (IdS s) = IdC s
 desugar (NumS n) = NumC n
 desugar (BoolS b) = BoolC b
@@ -148,15 +149,13 @@ desugar (CondS clauses maybeElse) = desugarCond clauses (desugarElse maybeElse)
     desugarCond ((guardExpr, bodyExpr) : rest) elseExpr =
       IfC (desugar guardExpr) (desugar bodyExpr) (desugarCond rest elseExpr)
 
--- --- INICIO DE CAMBIOS SOLICITADOS ---
-
--- REGLA PARA LetS (Paralelo)
+-- REGLA PARA LetS (Simultáneo)
 -- (let ((x v1) (y v2)) body) -> ((lambda (x y) body) v1 v2)
 desugar (LetS bindings body) =
   let (vars, valsS) = unzip bindings
       valsC = map desugar valsS
       bodyC = desugar body
-  -- Usa los helpers para currificación y aplicación múltiple
+ 
   in applyCurried (curryLambda vars bodyC) valsC
 
 -- REGLA PARA LetStarS (Secuencial)
@@ -164,7 +163,7 @@ desugar (LetS bindings body) =
 desugar (LetStarS bindings body) = desugarLetStar (map desugarBinding bindings) (desugar body)
   where
     desugarBinding (var, valS) = (var, desugar valS)
-    -- Caso base: no más bindings, solo queda el cuerpo
+    -- Caso base: solo queda el cuerpo
     desugarLetStar [] bodyC = bodyC
     -- Caso recursivo: (let* ((var val) ...rest) body)
     -- se convierte en: ((lambda (var) (let* (...rest) body)) val)
@@ -174,7 +173,7 @@ desugar (LetStarS bindings body) = desugarLetStar (map desugarBinding bindings) 
 -- REGLA PARA LetRecS (Recursivo)
 -- (letrec ((f (lambda (p) ...))) body) ->
 --   ((lambda (f) body) (Z (lambda (f) (lambda (p) ...))))
--- REGLA PARA LetRecS (Corregida)
+-- REGLA PARA LetRecS 
 desugar (LetRecS bindings body) = desugarLetRec bindings (desugar body)
   where
     desugarLetRec [] bodyC = bodyC
@@ -189,10 +188,9 @@ desugar (LetRecS bindings body) = desugarLetRec bindings (desugar body)
     desugarLetRec ((f, val) : _rest) _bodyC =
       error ("letrec: RHS no es una función para '" ++ f ++ "' — letrec solo admite bindings de funciones en esta implementación")
 
--- REGLA PARA FunS (AHORA USA EL HELPER)
+-- REGLA PARA FunS 
 desugar (FunS params body) = curryLambda params (desugar body)
 
--- REGLA PARA AppS (AHORA USA EL HELPER)
+-- REGLA PARA AppS 
 desugar (AppS funExpr argExprs) = applyCurried (desugar funExpr) (map desugar argExprs)
 
--- --- FIN DE CAMBIOS SOLICITADOS ---

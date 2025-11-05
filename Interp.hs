@@ -121,30 +121,31 @@ smallStep (SndC e) env
 
 -- Regla para Aplicación 
 smallStep (AppC funExpr argExpr) env
-  -- Regla de aplicación estándar (evaluación por valor):
-  -- 1) Si la función es un cierre y el argumento ya es un valor, aplicar (β-reducción).
-  -- 2) Si la función es un cierre y el argumento no es un valor, reducir el argumento.
-  -- 3) Si la función no es aún un cierre, reducir la función.
+  -- 1) Función lista y argumento ya es valor: aplicar con RestoreC
   | isClosure funExpr && isValue argExpr =
       case exprToValue funExpr of
         (ClosureV param body capturedEnv) ->
           let argVal = exprToValue argExpr
-              -- ¡Aquí está la magia del alcance estático!
-              -- El nuevo entorno se construye extendiendo el ENTORNO CAPTURADO (capturedEnv),
-              -- no el entorno actual (env).
-              newEnv = (param, argVal) : capturedEnv 
-              msg = "Applying closure: param=" ++ show param ++ ", argVal=" ++ show argVal ++ ", capturedEnv-size=" ++ show (length capturedEnv)
-          -- Usamos RestoreC para volver al entorno del llamador (env) después de que el cuerpo termine
-          in trace msg $ (RestoreC body env, newEnv)
-        _ -> error "Imposible: isClosure falló"
-
+              newEnv = (param, argVal) : capturedEnv
+          in trace "Applying closure..." (RestoreC body env, newEnv)
+        _ -> error "Imposible: isClosure falló (caso valor)"
+  -- 2) Función lista y argumento es LamC: crear cierre del arg con env del llamador (evita ambientes recursivos)
+  | isClosure funExpr && isLam argExpr =
+      case exprToValue funExpr of
+        (ClosureV param body capturedEnv) ->
+          let (LamC argParam argBody) = argExpr
+              argVal = ClosureV argParam argBody env
+              newEnv = (param, argVal) : capturedEnv
+          in trace "Applying closure (arg was LamC)..." (RestoreC body env, newEnv)
+        _ -> error "Imposible: isClosure falló (caso isLam argExpr)"
+  -- 3) La función ya es un cierre, reducir el argumento
   | isClosure funExpr =
-      let (argExpr', argEnv') = smallStep argExpr env
-      in (AppC funExpr argExpr', argEnv')
-
+      let (argExpr', env') = smallStep argExpr env
+      in (AppC funExpr argExpr', env')
+  -- 4) Reducir la función
   | otherwise =
-      let (funExpr', funEnv') = smallStep funExpr env
-      in (AppC funExpr' argExpr, funEnv')
+      let (funExpr', env') = smallStep funExpr env
+      in (AppC funExpr' argExpr, env')
 
 -- Regla para RestoreC: evalúa su subexpresión con el env actual; cuando
 -- la subexpresión es valor, restaura el env del llamador guardado.
